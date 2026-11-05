@@ -2,7 +2,7 @@
 
 一个单文件、免安装的 Windows 图片打码小工具：打开图片，拿鼠标像笔一样把马赛克涂上去，涂错了当场擦掉，存为新图。全程在原图分辨率上处理，不走截图流程，不掉画质。
 
-全部程序就是一个 `CensorBrush.exe`（约 183 KB），拷到任何 Windows 10 / 11 电脑上双击就能用。
+全部程序就是一个 `CensorBrush.exe`（约 183 KB），拷到任何 Windows 10 / 11 电脑上双击就能用。**编译好的 exe 就放在本仓库根目录**，下载它即可，无需自己构建。
 
 ## 使用方法
 
@@ -51,13 +51,15 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 说明：
 
 - `CensorBrush.manifest` 提供高 DPI 感知，构建时请保留
-- 作者发布版的 exe 还嵌入了一个卡通图标（构建时加 `/win32icon:CensorBrush.ico`）；图标文件未随仓库分发，缺了它构建出的 exe 使用系统默认图标，不影响任何功能
+- `CensorBrush.ico`（应用图标）已随仓库分发，`build.ps1` 会自动嵌入，构建出的 exe 与仓库里的成品完全一致
 
 ## 文件一览
 
 | 文件 | 说明 |
 | --- | --- |
+| `CensorBrush.exe` | 编译好的成品，下载双击即用 |
 | `CensorBrush.cs` | 全部源码（单文件，约 1500 行） |
+| `CensorBrush.ico` | 应用图标（构建时嵌入 exe） |
 | `CensorBrush.manifest` | 应用清单（PerMonitorV2 高 DPI） |
 | `build.ps1` | 一键构建脚本 |
 | `LICENSE` | MIT 许可证 |
