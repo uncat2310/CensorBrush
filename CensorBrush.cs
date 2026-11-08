@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Drawing.Text;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -19,18 +20,29 @@ namespace CensorBrushApp
 
         static Theme()
         {
-            Dark = false;
+            Apply(DetectSystemDark());
+        }
+
+        public static bool DetectSystemDark()
+        {
             try
             {
-                RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-                if (k != null)
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
                 {
-                    object v = k.GetValue("AppsUseLightTheme");
-                    if (v is int && (int)v == 0) Dark = true;
-                    k.Close();
+                    if (k != null)
+                    {
+                        object v = k.GetValue("AppsUseLightTheme");
+                        if (v is int && (int)v == 0) return true;
+                    }
                 }
             }
             catch { }
+            return false;
+        }
+
+        public static void Apply(bool dark)
+        {
+            Dark = dark;
             if (!Dark)
             {
                 Bar = Color.FromArgb(249, 249, 249);
@@ -71,12 +83,24 @@ namespace CensorBrushApp
             }
         }
 
+        public static Color Blend(Color fg, Color bg, float fgAmount)
+        {
+            float a = Math.Max(0f, Math.Min(1f, fgAmount));
+            int r = (int)Math.Round(bg.R + (fg.R - bg.R) * a);
+            int g = (int)Math.Round(bg.G + (fg.G - bg.G) * a);
+            int b = (int)Math.Round(bg.B + (fg.B - bg.B) * a);
+            return Color.FromArgb(Math.Max(0, Math.Min(255, r)), Math.Max(0, Math.Min(255, g)), Math.Max(0, Math.Min(255, b)));
+        }
+
+        // Guaranteed mathematically sound rounded rectangle with clamped corner radius
         public static GraphicsPath RoundedRect(Rectangle r, int radius)
         {
             GraphicsPath p = new GraphicsPath();
-            int d = radius * 2;
             if (r.Width <= 0 || r.Height <= 0) return p;
             if (radius <= 0) { p.AddRectangle(r); return p; }
+            int maxR = Math.Min(r.Width, r.Height) / 2;
+            if (radius > maxR) radius = maxR;
+            int d = radius * 2;
             p.AddArc(r.X, r.Y, d, d, 180, 90);
             p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
             p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
@@ -95,8 +119,8 @@ namespace CensorBrushApp
 
         public static void Fit(Graphics g, Rectangle r, Color c)
         {
-            Rectangle b = Box(r, (int)(r.Height * 0.64f));
-            using (Pen p = PenFor(c, 1.5f * r.Height / 28f))
+            Rectangle b = Box(r, (int)(r.Height * 0.58f));
+            using (Pen p = PenFor(c, Math.Max(1.2f, 1.5f * r.Height / 32f)))
             {
                 int l = Math.Max(3, b.Width / 3);
                 g.DrawLine(p, b.X, b.Y + l, b.X, b.Y); g.DrawLine(p, b.X, b.Y, b.X + l, b.Y);
@@ -106,11 +130,22 @@ namespace CensorBrushApp
             }
         }
 
+        public static void ThemeAuto(Graphics g, Rectangle r, Color c)
+        {
+            Rectangle b = Box(r, (int)(r.Height * 0.58f));
+            using (Pen p = PenFor(c, Math.Max(1.2f, 1.5f * r.Height / 32f)))
+            using (Brush br = new SolidBrush(c))
+            {
+                g.DrawEllipse(p, b);
+                g.FillPie(br, b.X + 1, b.Y + 1, b.Width - 2, b.Height - 2, 90, 180);
+            }
+        }
+
         public static void Grid3(Graphics g, Rectangle r, Color c)
         {
-            Rectangle b = Box(r, (int)(r.Height * 0.66f));
+            Rectangle b = Box(r, (int)(r.Height * 0.62f));
             using (Brush br = new SolidBrush(c))
-            using (Pen p = new Pen(c, 1.2f * r.Height / 24f))
+            using (Pen p = new Pen(c, Math.Max(1f, 1.2f * r.Height / 26f)))
             {
                 int cellSz = Math.Max(2, b.Width / 4);
                 int step = cellSz + Math.Max(1, b.Width / 8);
@@ -126,7 +161,7 @@ namespace CensorBrushApp
 
         public static void Grid2(Graphics g, Rectangle r, Color c)
         {
-            Rectangle b = Box(r, (int)(r.Height * 0.57f));
+            Rectangle b = Box(r, (int)(r.Height * 0.55f));
             using (Brush br = new SolidBrush(c))
             {
                 int gap = Math.Max(2, b.Width / 8);
@@ -140,8 +175,8 @@ namespace CensorBrushApp
 
         public static void BrushDot(Graphics g, Rectangle r, Color c)
         {
-            Rectangle b = Box(r, (int)(r.Height * 0.5f));
-            using (Pen p = new Pen(c, 1.5f * r.Height / 28f))
+            Rectangle b = Box(r, (int)(r.Height * 0.48f));
+            using (Pen p = new Pen(c, Math.Max(1.2f, 1.5f * r.Height / 32f)))
             using (Brush br = new SolidBrush(c))
             {
                 g.DrawEllipse(p, b);
@@ -155,8 +190,8 @@ namespace CensorBrushApp
             GraphicsState st = g.Save();
             g.TranslateTransform(r.X + r.Width / 2f, r.Y + r.Height / 2f);
             g.RotateTransform(-30f);
-            float f = r.Height / 24f;
-            using (Pen p = PenFor(c, 1.5f * f))
+            float f = r.Height / 26f;
+            using (Pen p = PenFor(c, Math.Max(1.2f, 1.5f * f)))
             {
                 int hw = Math.Max(4, (int)(8 * f)), hh = Math.Max(3, (int)(5 * f));
                 using (GraphicsPath path = Theme.RoundedRect(new Rectangle(-hw, -hh, hw * 2, hh * 2), Math.Max(1, (int)(2 * f))))
@@ -168,7 +203,8 @@ namespace CensorBrushApp
 
         public static void Plus(Graphics g, Rectangle r, Color c)
         {
-            using (Pen p = PenFor(c))
+            float w = Math.Max(1.2f, 1.5f * r.Height / 22f);
+            using (Pen p = PenFor(c, w))
             {
                 int cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2;
                 int half = Math.Max(3, r.Height / 4);
@@ -179,17 +215,58 @@ namespace CensorBrushApp
 
         public static void Minus(Graphics g, Rectangle r, Color c)
         {
-            using (Pen p = PenFor(c))
+            float w = Math.Max(1.2f, 1.5f * r.Height / 22f);
+            using (Pen p = PenFor(c, w))
             {
                 int cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2;
                 int half = Math.Max(3, r.Height / 4);
                 g.DrawLine(p, cx - half, cy, cx + half, cy);
             }
         }
+
+        public static void PhotoEmpty(Graphics g, Rectangle r, Color c)
+        {
+            using (Pen p = PenFor(c, Math.Max(2f, r.Height * 0.04f)))
+            {
+                int rad = Math.Max(3, (int)(r.Height * 0.12f));
+                using (GraphicsPath frame = Theme.RoundedRect(r, rad))
+                    g.DrawPath(p, frame);
+
+                int dotR = Math.Max(3, (int)(r.Height * 0.08f));
+                int dotX = r.X + (int)(r.Width * 0.68f);
+                int dotY = r.Y + (int)(r.Height * 0.32f);
+                g.DrawEllipse(p, dotX - dotR, dotY - dotR, dotR * 2, dotR * 2);
+
+                int mx0 = r.X + (int)(r.Width * 0.18f);
+                int my0 = r.Bottom - (int)(r.Height * 0.22f);
+                int mx1 = r.X + (int)(r.Width * 0.45f);
+                int my1 = r.Y + (int)(r.Height * 0.46f);
+                int mx2 = r.Right - (int)(r.Width * 0.18f);
+                int my2 = my0;
+
+                g.DrawLine(p, mx0, my0, mx1, my1);
+                g.DrawLine(p, mx1, my1, mx2, my2);
+            }
+        }
+    }
+
+    // ================= font helper (safely replaces control fonts without handle leaks) =================
+    static class FontHelper
+    {
+        public static void SetFont(Control c, Font newFont)
+        {
+            if (c == null) return;
+            Font old = c.Font;
+            c.Font = newFont;
+            if (old != null && old != SystemFonts.DefaultFont && old != newFont)
+            {
+                old.Dispose();
+            }
+        }
     }
 
     // ================= flat icon button (Win11 command-bar style) =================
-    class IconButton : Button
+    class IconButton : Control
     {
         public string Glyph;
         public Action<Graphics, Rectangle, Color> Vector;
@@ -198,25 +275,21 @@ namespace CensorBrushApp
         Font glyphFontCache;
         float glyphFontSizeCache = 0f;
 
-        Font GetGlyphFont(float dcDpi)
+        Font GetGlyphFont()
         {
-            float sz = Math.Max(8f, Height * 0.52f * 96f / Math.Max(72f, dcDpi));
-            if (glyphFontCache == null || Math.Abs(sz - glyphFontSizeCache) > 0.5f)
+            float px = Math.Max(10f, (float)Math.Round(Height * 0.52f));
+            if (glyphFontCache == null || Math.Abs(px - glyphFontSizeCache) > 0.5f)
             {
                 if (glyphFontCache != null) glyphFontCache.Dispose();
-                glyphFontCache = new Font(Program.IconFontName, sz);
-                glyphFontSizeCache = sz;
+                glyphFontCache = new Font(Program.IconFontName, px, FontStyle.Regular, GraphicsUnit.Pixel);
+                glyphFontSizeCache = px;
             }
             return glyphFontCache;
         }
 
         public IconButton()
         {
-            FlatStyle = FlatStyle.Flat;
-            FlatAppearance.BorderSize = 0;
-            FlatAppearance.MouseOverBackColor = Color.Transparent;
-            FlatAppearance.MouseDownBackColor = Color.Transparent;
-            UseVisualStyleBackColor = false;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             TabStop = false;
             Text = "";
             Cursor = Cursors.Default;
@@ -224,7 +297,7 @@ namespace CensorBrushApp
 
         protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { hover = false; down = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { down = true; Invalidate(); base.OnMouseDown(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { down = true; Invalidate(); } base.OnMouseDown(e); }
         protected override void OnMouseUp(MouseEventArgs e) { down = false; Invalidate(); base.OnMouseUp(e); }
         protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
 
@@ -232,12 +305,14 @@ namespace CensorBrushApp
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
             using (Brush bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             Color fg = Enabled ? ForeColor : Theme.Disabled;
             if (Enabled && (hover || down))
             {
                 Rectangle rr = new Rectangle(1, 1, Width - 2, Height - 2);
-                using (GraphicsPath path = Theme.RoundedRect(rr, 4))
+                int rad = Math.Max(2, (int)Math.Round(4 * Height / 32f));
+                using (GraphicsPath path = Theme.RoundedRect(rr, rad))
                 using (Brush b = new SolidBrush(down ? Theme.Pressed : Theme.Hover))
                     g.FillPath(b, path);
             }
@@ -245,16 +320,26 @@ namespace CensorBrushApp
             {
                 Vector(g, ClientRectangle, fg);
             }
-            else if (Glyph != null)
+            else if (!string.IsNullOrEmpty(Glyph))
             {
-                TextRenderer.DrawText(g, Glyph, GetGlyphFont(g.DpiX), ClientRectangle, fg,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+                TextRenderer.DrawText(g, Glyph, GetGlyphFont(), ClientRectangle, fg,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
             }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && glyphFontCache != null)
+            {
+                glyphFontCache.Dispose();
+                glyphFontCache = null;
+            }
+            base.Dispose(disposing);
         }
     }
 
     // ================= segmented mode button =================
-    class ModeButton : Button
+    class ModeButton : Control
     {
         public bool Selected;
         public Action<Graphics, Rectangle, Color> Vector;
@@ -262,30 +347,29 @@ namespace CensorBrushApp
 
         public ModeButton()
         {
-            FlatStyle = FlatStyle.Flat;
-            FlatAppearance.BorderSize = 0;
-            FlatAppearance.MouseOverBackColor = Color.Transparent;
-            FlatAppearance.MouseDownBackColor = Color.Transparent;
-            UseVisualStyleBackColor = false;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             TabStop = false;
             Text = "";
+            Cursor = Cursors.Hand;
         }
 
         protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { hover = false; down = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { down = true; Invalidate(); base.OnMouseDown(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { down = true; Invalidate(); } base.OnMouseDown(e); }
         protected override void OnMouseUp(MouseEventArgs e) { down = false; Invalidate(); base.OnMouseUp(e); }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
             using (Brush bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             Color fg = Theme.Text;
             Rectangle rr = new Rectangle(0, 0, Width - 1, Height - 1);
+            int rad = Math.Max(2, (int)Math.Round(4 * Height / 26f));
             if (Selected)
             {
-                using (GraphicsPath path = Theme.RoundedRect(rr, 4))
+                using (GraphicsPath path = Theme.RoundedRect(rr, rad))
                 {
                     using (Brush b = new SolidBrush(Theme.SegSelected)) g.FillPath(b, path);
                     using (Pen p = new Pen(Theme.Border)) g.DrawPath(p, path);
@@ -293,12 +377,12 @@ namespace CensorBrushApp
             }
             else if (hover || down)
             {
-                using (GraphicsPath path = Theme.RoundedRect(rr, 4))
+                using (GraphicsPath path = Theme.RoundedRect(rr, rad))
                 using (Brush b = new SolidBrush(down ? Theme.Pressed : Theme.Hover))
                     g.FillPath(b, path);
             }
-            int pad = Math.Max(4, (int)(8 * Height / 24f));
-            int iconW = (int)(20 * Height / 24f);
+            int pad = Math.Max(4, (int)(8 * Height / 26f));
+            int iconW = (int)(20 * Height / 26f);
             if (Vector != null) Vector(g, new Rectangle(pad, 0, iconW, Height), fg);
             Rectangle tr = new Rectangle(pad + iconW, 0, Width - pad - iconW, Height);
             TextRenderer.DrawText(g, Text, Font, tr, fg,
@@ -307,32 +391,64 @@ namespace CensorBrushApp
     }
 
     // ================= accent button (empty state) =================
-    class AccentButton : Button
+    class AccentButton : Control
     {
         bool hover, down;
         public AccentButton()
         {
-            FlatStyle = FlatStyle.Flat;
-            FlatAppearance.BorderSize = 0;
-            FlatAppearance.MouseOverBackColor = Color.Transparent;
-            FlatAppearance.MouseDownBackColor = Color.Transparent;
-            UseVisualStyleBackColor = false;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             TabStop = false;
+            Cursor = Cursors.Hand;
         }
         protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { hover = false; down = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { down = true; Invalidate(); base.OnMouseDown(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { down = true; Invalidate(); } base.OnMouseDown(e); }
         protected override void OnMouseUp(MouseEventArgs e) { down = false; Invalidate(); base.OnMouseUp(e); }
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
             using (Brush bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             Color fill = down ? Theme.Accent : (hover ? Theme.AccentButtonHover : Theme.AccentButton);
-            using (GraphicsPath path = Theme.RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 4))
+            int rad = Math.Max(2, (int)Math.Round(4 * Height / 32f));
+            using (GraphicsPath path = Theme.RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), rad))
             using (Brush b = new SolidBrush(fill))
                 g.FillPath(b, path);
             TextRenderer.DrawText(g, Text, Font, ClientRectangle, Color.White,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+        }
+    }
+
+    // ================= pill badge label (slider values) =================
+    class PillLabel : Control
+    {
+        public PillLabel()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            TabStop = false;
+        }
+
+        protected override void OnTextChanged(EventArgs e)
+        {
+            base.OnTextChanged(e);
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            using (Brush bg = new SolidBrush(Parent != null ? Parent.BackColor : Theme.Bar))
+                g.FillRectangle(bg, ClientRectangle);
+
+            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (GraphicsPath path = Theme.RoundedRect(r, Height / 2))
+            using (Brush b = new SolidBrush(Theme.Pill))
+                g.FillPath(b, path);
+
+            TextRenderer.DrawText(g, Text, Font, ClientRectangle, ForeColor,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
         }
     }
@@ -349,6 +465,7 @@ namespace CensorBrushApp
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
             TabStop = false;
             Height = 28;
+            Cursor = Cursors.Default;
         }
 
         public int Minimum { get { return minV; } set { minV = value; if (val < minV) val = minV; Invalidate(); } }
@@ -364,7 +481,7 @@ namespace CensorBrushApp
             }
         }
 
-        float Inset() { return Height * 0.3f; }
+        float Inset() { return Height * 0.32f; }
 
         float ThumbX()
         {
@@ -380,9 +497,9 @@ namespace CensorBrushApp
             using (Brush bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             float cy = Height / 2f;
             float tx = ThumbX();
-            float ins = Inset(); float th = Math.Max(3f, Height * 0.14f);
+            float ins = Inset(); float th = Math.Max(3f, Height * 0.15f);
             RectangleF track = new RectangleF(ins, cy - th / 2f, Width - ins * 2f, th);
-            using (GraphicsPath tp = Theme.RoundedRect(Rectangle.Round(track), Math.Max(1, (int)(th / 2f))))
+            using (GraphicsPath tp = Theme.RoundedRect(Rectangle.Round(track), (int)Math.Ceiling(th / 2f)))
             {
                 using (Brush tb = new SolidBrush(Theme.Track)) g.FillPath(tb, tp);
                 if (tx > ins)
@@ -393,9 +510,9 @@ namespace CensorBrushApp
                     g.Restore(st);
                 }
             }
-            int r = (int)((dragging || hoverThumb) ? Height * 0.30f : Height * 0.26f); if (r < 5) r = 5;
+            int r = (int)((dragging || hoverThumb) ? Height * 0.28f : Height * 0.24f); if (r < 5) r = 5;
             using (Brush wb = new SolidBrush(Color.White))
-            using (Pen bp = new Pen(Color.FromArgb(145, 145, 145), 1))
+            using (Pen bp = new Pen(Theme.Dark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(160, 160, 160), 1))
             {
                 g.FillEllipse(wb, tx - r, cy - r, r * 2, r * 2);
                 g.DrawEllipse(bp, tx - r, cy - r, r * 2, r * 2);
@@ -404,7 +521,8 @@ namespace CensorBrushApp
             {
                 using (Brush ab = new SolidBrush(Theme.Accent))
                 {
-                    float dr = Height * 0.11f; g.FillEllipse(ab, tx - dr, cy - dr, dr * 2f, dr * 2f);
+                    float dr = Height * 0.11f; if (dr < 3f) dr = 3f;
+                    g.FillEllipse(ab, tx - dr, cy - dr, dr * 2f, dr * 2f);
                 }
             }
         }
@@ -423,8 +541,11 @@ namespace CensorBrushApp
         }
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            bool prevHover = hoverThumb;
             hoverThumb = Math.Abs(e.X - ThumbX()) <= Height * 0.4f && Math.Abs(e.Y - Height / 2) <= Height * 0.45f;
-            if (dragging) UpdateFromX(e.X); else Invalidate();
+            Cursor = (hoverThumb || dragging) ? Cursors.Hand : Cursors.Default;
+            if (dragging) UpdateFromX(e.X);
+            else if (prevHover != hoverThumb) Invalidate();
             base.OnMouseMove(e);
         }
         protected override void OnMouseUp(MouseEventArgs e)
@@ -432,7 +553,7 @@ namespace CensorBrushApp
             dragging = false; Capture = false; Invalidate();
             base.OnMouseUp(e);
         }
-        protected override void OnMouseLeave(EventArgs e) { hoverThumb = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseLeave(EventArgs e) { hoverThumb = false; Cursor = Cursors.Default; Invalidate(); base.OnMouseLeave(e); }
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             int step = Math.Max(1, (maxV - minV) / 20);
@@ -459,21 +580,90 @@ namespace CensorBrushApp
         }
     }
 
+    // ================= app settings (theme mode), stored under %AppData%\CensorBrush =================
+    static class AppSettings
+    {
+        public static int ThemeMode = 0; // 0 = follow system, 1 = light, 2 = dark
+
+        static string SettingsPath
+        {
+            get
+            {
+                string d = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CensorBrush");
+                try { Directory.CreateDirectory(d); } catch { }
+                return Path.Combine(d, "settings.txt");
+            }
+        }
+
+        public static void Load()
+        {
+            try
+            {
+                string t = File.ReadAllText(SettingsPath);
+                if (t.Contains("theme=light")) ThemeMode = 1;
+                else if (t.Contains("theme=dark")) ThemeMode = 2;
+                else ThemeMode = 0;
+            }
+            catch { }
+        }
+
+        public static void Save()
+        {
+            try { File.WriteAllText(SettingsPath, "theme=" + (ThemeMode == 1 ? "light" : ThemeMode == 2 ? "dark" : "auto")); }
+            catch { }
+        }
+    }
+
     static class Program
     {
-        public static string IconFontName = "Segoe MDL2 Assets";
+        public static string IconFontName = "Segoe Fluent Icons";
         public static string UiFontName = "Microsoft YaHei UI";
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+        [DllImport("shcore.dll")]
+        static extern int SetProcessDpiAwareness(int awareness);
+
+        [DllImport("user32.dll")]
+        static extern bool SetProcessDPIAware();
 
         [STAThread]
         static void Main(string[] args)
         {
-            // DPI awareness (PerMonitorV2 + WinForms auto-resizing) comes from CensorBrush.exe.config
+            // PerMonitorV2 DPI awareness initialization (Win10 1703+)
+            // -4 = DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+            try
+            {
+                if (!SetProcessDpiAwarenessContext((IntPtr)(-4)))
+                {
+                    if (SetProcessDpiAwareness(2) != 0) // PROCESS_PER_MONITOR_DPI_AWARE
+                    {
+                        SetProcessDPIAware();
+                    }
+                }
+            }
+            catch
+            {
+                try { SetProcessDPIAware(); } catch { }
+            }
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            AppSettings.Load();
+            Theme.Apply(AppSettings.ThemeMode == 2 || (AppSettings.ThemeMode == 0 && Theme.DetectSystemDark()));
+
             IconFontName = FamilyExists("Segoe Fluent Icons") ? "Segoe Fluent Icons"
                 : (FamilyExists("Segoe MDL2 Assets") ? "Segoe MDL2 Assets" : "Segoe UI Symbol");
-            UiFontName = FamilyExists("Segoe UI Variable Text") ? "Segoe UI Variable Text"
-                : (FamilyExists("Segoe UI") ? "Segoe UI" : "Microsoft YaHei UI");
+
+            // Native Windows typography: Windows Notepad on zh-CN uses Microsoft YaHei UI (ClearType hinted)
+            string sysFont = SystemFonts.MessageBoxFont != null ? SystemFonts.MessageBoxFont.Name : "Microsoft YaHei UI";
+            if (FamilyExists("Microsoft YaHei UI")) UiFontName = "Microsoft YaHei UI";
+            else if (FamilyExists(sysFont)) UiFontName = sysFont;
+            else if (FamilyExists("Segoe UI")) UiFontName = "Segoe UI";
+            else UiFontName = FontFamily.GenericSansSerif.Name;
+
             MainForm f = new MainForm();
             if (args.Length > 0 && File.Exists(args[0]))
             {
@@ -483,10 +673,14 @@ namespace CensorBrushApp
             Application.Run(f);
         }
 
-        static bool FamilyExists(string name)
+        public static bool FamilyExists(string name)
         {
-            foreach (FontFamily ff in FontFamily.Families)
-                if (ff.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) return true;
+            try
+            {
+                foreach (FontFamily ff in FontFamily.Families)
+                    if (ff.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            catch { }
             return false;
         }
     }
@@ -510,7 +704,8 @@ namespace CensorBrushApp
         byte[] curPixels;
         int imgW, imgH;
         Bitmap currentBmp;
-        string filePath;
+        string filePath = "";
+        bool isDirty = false;
 
         // ---- view state ----
         float zoom = 1f;
@@ -537,13 +732,19 @@ namespace CensorBrushApp
         // ---- controls ----
         CanvasPanel canvas;
         ModernSlider brushSlider, blockSlider;
-        Label brushVal, blockVal, statusLeft, dimLabel, zoomLabel;
+        PillLabel brushVal, blockVal;
+        Label statusLeft, dimLabel, zoomLabel;
         ModeButton modeMosaicBtn, modeEraseBtn;
-        IconButton btnSave, btnSaveAs, btnUndo, btnFit, btnZoomIn, btnZoomOut;
+        IconButton btnOpen, btnSave, btnSaveAs, btnUndo, btnFit, btnZoomIn, btnZoomOut, themeBtn;
+        Panel headerBar, statusPanel, themeWrap, segPanel;
+        StaticIcon brushIcon, blockIcon;
+        FlowLayoutPanel header, statusRight;
         AccentButton btnOpenBig;
-        FlowLayoutPanel statusRight;
+        List<Control> separators = new List<Control>();
         ToolTip tip;
         Timer saveTimer;
+        uint currentDpi = 96;
+        float scaleFactor = 1f;
 
         [DllImport("dwmapi.dll")]
         static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
@@ -551,11 +752,10 @@ namespace CensorBrushApp
         public MainForm()
         {
             AutoScaleMode = AutoScaleMode.None;
-            Text = "打码笔";
+            UpdateTitle();
             try { this.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            Width = 1120;
-            Height = 760;
-            MinimumSize = new Size(840, 560);
+            Width = 1080;
+            Height = 720;
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font(Program.UiFontName, 9f);
             BackColor = Theme.Bar;
@@ -569,18 +769,41 @@ namespace CensorBrushApp
             tip.InitialDelay = 600;
             tip.ReshowDelay = 200;
 
+            // ---------- command bar (Win11 fluent style) ----------
+            headerBar = new Panel();
+            headerBar.Dock = DockStyle.Top;
+            headerBar.Height = 40;
+            headerBar.BackColor = Theme.Bar;
+            headerBar.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(Theme.Border))
+                    e.Graphics.DrawLine(p, 0, headerBar.Height - 1, headerBar.Width, headerBar.Height - 1);
+            };
 
-            // ---------- command bar ----------
-            FlowLayoutPanel header = new FlowLayoutPanel();
-            header.Dock = DockStyle.Top;
-            header.Height = 44;
+            header = new FlowLayoutPanel();
+            header.Dock = DockStyle.Fill;
             header.WrapContents = false;
-            header.Padding = new Padding(8, 8, 4, 0);
+            header.Padding = new Padding(6, 4, 4, 0);
             header.BackColor = Theme.Bar;
 
-            IconButton btnOpen = new IconButton();
+            themeWrap = new Panel();
+            themeWrap.Dock = DockStyle.Right;
+            themeWrap.Width = 44;
+            themeWrap.Padding = new Padding(4);
+            themeWrap.BackColor = Theme.Bar;
+
+            themeBtn = new IconButton();
+            themeBtn.Dock = DockStyle.Fill;
+            themeBtn.BackColor = Theme.Bar; themeBtn.ForeColor = Theme.Text;
+            themeBtn.Click += delegate { CycleTheme(); };
+            themeWrap.Controls.Add(themeBtn);
+            headerBar.Controls.Add(header);
+            headerBar.Controls.Add(themeWrap);
+            UpdateThemeButton();
+
+            btnOpen = new IconButton();
             btnOpen.Glyph = "\uE838";
-            btnOpen.Size = new Size(36, 28);
+            btnOpen.Size = new Size(32, 32);
             btnOpen.Margin = new Padding(0, 0, 2, 0);
             btnOpen.BackColor = Theme.Bar; btnOpen.ForeColor = Theme.Text;
             tip.SetToolTip(btnOpen, "打开图片 (Ctrl+O)");
@@ -588,7 +811,7 @@ namespace CensorBrushApp
 
             btnSave = new IconButton();
             btnSave.Glyph = "\uE74E";
-            btnSave.Size = new Size(36, 28);
+            btnSave.Size = new Size(32, 32);
             btnSave.Margin = new Padding(0, 0, 2, 0);
             btnSave.BackColor = Theme.Bar; btnSave.ForeColor = Theme.Text;
             tip.SetToolTip(btnSave, "保存 (Ctrl+S)");
@@ -596,15 +819,15 @@ namespace CensorBrushApp
 
             btnSaveAs = new IconButton();
             btnSaveAs.Glyph = "\uE8C8";
-            btnSaveAs.Size = new Size(36, 28);
+            btnSaveAs.Size = new Size(32, 32);
             btnSaveAs.Margin = new Padding(0, 0, 2, 0);
             btnSaveAs.BackColor = Theme.Bar; btnSaveAs.ForeColor = Theme.Text;
-            tip.SetToolTip(btnSaveAs, "另存为");
+            tip.SetToolTip(btnSaveAs, "另存为 (Ctrl+Shift+S) / 复制 (Ctrl+C)");
             btnSaveAs.Click += delegate { DoSaveAs(); };
 
             btnUndo = new IconButton();
             btnUndo.Glyph = "\uE7A7";
-            btnUndo.Size = new Size(36, 28);
+            btnUndo.Size = new Size(32, 32);
             btnUndo.Margin = new Padding(0, 0, 2, 0);
             btnUndo.BackColor = Theme.Bar; btnUndo.ForeColor = Theme.Text;
             tip.SetToolTip(btnUndo, "撤销 (Ctrl+Z)");
@@ -612,7 +835,7 @@ namespace CensorBrushApp
 
             btnFit = new IconButton();
             btnFit.Vector = IconArt.Fit;
-            btnFit.Size = new Size(36, 28);
+            btnFit.Size = new Size(32, 32);
             btnFit.Margin = new Padding(0, 0, 2, 0);
             btnFit.BackColor = Theme.Bar; btnFit.ForeColor = Theme.Text;
             tip.SetToolTip(btnFit, "适合窗口 (Ctrl+0)");
@@ -620,10 +843,10 @@ namespace CensorBrushApp
 
             brushSlider = new ModernSlider();
             brushSlider.Minimum = 10; brushSlider.Maximum = 300; brushSlider.Value = 80;
-            brushSlider.Width = 104;
+            brushSlider.Width = 86;
             brushSlider.Margin = new Padding(2, 0, 2, 0);
             brushSlider.BackColor = Theme.Bar;
-            tip.SetToolTip(brushSlider, "笔刷大小");
+            tip.SetToolTip(brushSlider, "笔刷大小 (10 - 300)");
             brushSlider.ValueChanged += delegate
             {
                 brushVal.Text = brushSlider.Value.ToString();
@@ -632,33 +855,33 @@ namespace CensorBrushApp
 
             blockSlider = new ModernSlider();
             blockSlider.Minimum = 4; blockSlider.Maximum = 40; blockSlider.Value = 12;
-            blockSlider.Width = 80;
+            blockSlider.Width = 72;
             blockSlider.Margin = new Padding(2, 0, 2, 0);
             blockSlider.BackColor = Theme.Bar;
-            tip.SetToolTip(blockSlider, "马赛克块大小");
+            tip.SetToolTip(blockSlider, "马赛克块大小 (4 - 40)");
             blockSlider.ValueChanged += delegate { blockVal.Text = blockSlider.Value.ToString(); };
 
             brushVal = MakePill("80");
             blockVal = MakePill("12");
 
-            StaticIcon brushIcon = new StaticIcon();
+            brushIcon = new StaticIcon();
             brushIcon.Vector = IconArt.BrushDot;
-            brushIcon.Size = new Size(20, 28);
-            brushIcon.Margin = new Padding(6, 0, 0, 0);
+            brushIcon.Size = new Size(18, 32);
+            brushIcon.Margin = new Padding(4, 0, 0, 0);
             brushIcon.BackColor = Theme.Bar;
             tip.SetToolTip(brushIcon, "笔刷大小");
 
-            StaticIcon blockIcon = new StaticIcon();
+            blockIcon = new StaticIcon();
             blockIcon.Vector = IconArt.Grid2;
-            blockIcon.Size = new Size(20, 28);
-            blockIcon.Margin = new Padding(6, 0, 0, 0);
+            blockIcon.Size = new Size(18, 32);
+            blockIcon.Margin = new Padding(4, 0, 0, 0);
             blockIcon.BackColor = Theme.Bar;
             tip.SetToolTip(blockIcon, "马赛克块大小");
 
             // segmented mode switch
-            Panel segPanel = new Panel();
-            segPanel.Size = new Size(158, 28);
-            segPanel.Margin = new Padding(8, 0, 0, 0);
+            segPanel = new Panel();
+            segPanel.Size = new Size(146, 30);
+            segPanel.Margin = new Padding(6, 0, 0, 0);
             segPanel.BackColor = Theme.SegBg;
 
             modeMosaicBtn = new ModeButton();
@@ -666,7 +889,7 @@ namespace CensorBrushApp
             modeMosaicBtn.Vector = IconArt.Grid3;
             modeMosaicBtn.Font = new Font(Program.UiFontName, 9f);
             modeMosaicBtn.Location = new Point(2, 2);
-            modeMosaicBtn.Size = new Size(76, 24);
+            modeMosaicBtn.Size = new Size(70, 26);
             modeMosaicBtn.BackColor = Theme.SegBg;
             modeMosaicBtn.Selected = true;
             tip.SetToolTip(modeMosaicBtn, "马赛克笔 · 左键涂抹打码");
@@ -676,11 +899,11 @@ namespace CensorBrushApp
             modeEraseBtn.Text = "还原";
             modeEraseBtn.Vector = IconArt.Eraser;
             modeEraseBtn.Font = new Font(Program.UiFontName, 9f);
-            modeEraseBtn.Location = new Point(80, 2);
-            modeEraseBtn.Size = new Size(76, 24);
+            modeEraseBtn.Location = new Point(74, 2);
+            modeEraseBtn.Size = new Size(70, 26);
             modeEraseBtn.BackColor = Theme.SegBg;
             modeEraseBtn.Selected = false;
-            tip.SetToolTip(modeEraseBtn, "还原笔 · 左键擦除打码");
+            tip.SetToolTip(modeEraseBtn, "还原笔 · 左键擦除打码 (也可直接按住鼠标右键涂抹)");
             modeEraseBtn.Click += delegate { SetRestoreMode(true); };
 
             segPanel.Controls.Add(modeMosaicBtn);
@@ -701,10 +924,10 @@ namespace CensorBrushApp
             header.Controls.Add(blockVal);
             header.Controls.Add(segPanel);
 
-            // ---------- status bar ----------
-            Panel statusPanel = new Panel();
+            // ---------- status bar (Notepad specification: vertically centered & crisp) ----------
+            statusPanel = new Panel();
             statusPanel.Dock = DockStyle.Bottom;
-            statusPanel.Height = 26;
+            statusPanel.Height = 30;
             statusPanel.BackColor = Theme.Bar;
             statusPanel.Paint += delegate(object s, PaintEventArgs e)
             {
@@ -713,12 +936,15 @@ namespace CensorBrushApp
 
             statusLeft = new Label();
             statusLeft.Dock = DockStyle.Left;
-            statusLeft.AutoSize = true;
+            statusLeft.AutoSize = false;
+            statusLeft.Height = 30;
+            statusLeft.Width = 500;
             statusLeft.TextAlign = ContentAlignment.MiddleLeft;
-            statusLeft.Padding = new Padding(10, 0, 0, 0);
+            statusLeft.Padding = new Padding(12, 0, 0, 0);
             statusLeft.Font = new Font(Program.UiFontName, 9f);
             statusLeft.ForeColor = Theme.Secondary;
-            statusLeft.Text = "";
+            statusLeft.BackColor = Theme.Bar;
+            statusLeft.Text = "就绪";
             statusPanel.Controls.Add(statusLeft);
 
             statusRight = new FlowLayoutPanel();
@@ -731,34 +957,36 @@ namespace CensorBrushApp
 
             dimLabel = new Label();
             dimLabel.AutoSize = true;
-            dimLabel.Margin = new Padding(0, 5, 10, 0);
+            dimLabel.Margin = new Padding(0, 4, 10, 0);
             dimLabel.Font = new Font(Program.UiFontName, 9f);
             dimLabel.ForeColor = Theme.Secondary;
+            dimLabel.BackColor = Theme.Bar;
             dimLabel.Text = "";
 
             btnZoomOut = new IconButton();
             btnZoomOut.Vector = IconArt.Minus;
-            btnZoomOut.Size = new Size(26, 20);
+            btnZoomOut.Size = new Size(22, 22);
             btnZoomOut.Margin = new Padding(0, 3, 0, 0);
             btnZoomOut.BackColor = Theme.Bar; btnZoomOut.ForeColor = Theme.Text;
             tip.SetToolTip(btnZoomOut, "缩小 (Ctrl+-)");
             btnZoomOut.Click += delegate { ZoomStep(1f / 1.25f); };
 
             zoomLabel = new Label();
-            zoomLabel.Size = new Size(48, 20);
+            zoomLabel.Size = new Size(48, 22);
             zoomLabel.Margin = new Padding(0, 3, 0, 0);
             zoomLabel.TextAlign = ContentAlignment.MiddleCenter;
             zoomLabel.Font = new Font(Program.UiFontName, 9f);
             zoomLabel.ForeColor = Theme.Text;
+            zoomLabel.BackColor = Theme.Bar;
             zoomLabel.Cursor = Cursors.Hand;
             zoomLabel.Text = "";
-            tip.SetToolTip(zoomLabel, "适合窗口");
+            tip.SetToolTip(zoomLabel, "适合窗口 (Ctrl+0)");
             zoomLabel.Click += delegate { FitView(); canvas.Invalidate(); };
 
             btnZoomIn = new IconButton();
             btnZoomIn.Vector = IconArt.Plus;
-            btnZoomIn.Size = new Size(26, 20);
-            btnZoomIn.Margin = new Padding(0, 3, 0, 0);
+            btnZoomIn.Size = new Size(22, 22);
+            btnZoomIn.Margin = new Padding(0, 3, 8, 0);
             btnZoomIn.BackColor = Theme.Bar; btnZoomIn.ForeColor = Theme.Text;
             tip.SetToolTip(btnZoomIn, "放大 (Ctrl++)");
             btnZoomIn.Click += delegate { ZoomStep(1.25f); };
@@ -790,7 +1018,7 @@ namespace CensorBrushApp
 
             btnOpenBig = new AccentButton();
             btnOpenBig.Text = "打开图片";
-            btnOpenBig.Font = new Font(Program.UiFontName, 9f);
+            btnOpenBig.Font = new Font(Program.UiFontName, 9.5f);
             btnOpenBig.Size = new Size(112, 32);
             btnOpenBig.BackColor = Theme.Canvas;
             btnOpenBig.Click += delegate { DoOpen(); };
@@ -798,7 +1026,7 @@ namespace CensorBrushApp
 
             Controls.Add(canvas);
             Controls.Add(statusPanel);
-            Controls.Add(header);
+            Controls.Add(headerBar);
 
             DragEnter += DragEnterHandler;
             DragDrop += DragDropHandler;
@@ -810,87 +1038,309 @@ namespace CensorBrushApp
             saveTimer.Tick += delegate { saveTimer.Stop(); UpdateStatus(); };
 
             RefreshCommandStates();
+            UpdateStatus();
         }
 
-        bool scaledDone = false;
-
-
-        void EnsureScaled()
+        [StructLayout(LayoutKind.Sequential)]
+        struct RECT
         {
-            if (scaledDone) return;
-            scaledDone = true;
-            uint dpi = 96;
-            try { dpi = GetDpiForWindow(Handle); } catch { }
-            if (dpi <= 96) return;
-            float f = dpi / 96f;
-            ScaleTree(this, f);
-            MinimumSize = new Size((int)(840 * f), (int)(560 * f));
-            ClientSize = new Size((int)(1094 * f), (int)(689 * f));
-            Rectangle sb = Screen.FromControl(this).Bounds;
-            int ow = (int)(1120 * f), oh = (int)(760 * f);
-            SetWindowPos(Handle, IntPtr.Zero, (sb.Width - ow) / 2, (sb.Height - oh) / 2, ow, oh, 0x0004);
-            LayoutEmptyButton();
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
         }
 
         [DllImport("user32.dll")]
         static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
-        static Padding ScalePadding(Padding pd, float f)
-        {
-            return new Padding((int)Math.Round(pd.Left * f), (int)Math.Round(pd.Top * f),
-                               (int)Math.Round(pd.Right * f), (int)Math.Round(pd.Bottom * f));
-        }
-
-        static void ScaleTree(Control c, float f)
-        {
-            List<Control> kids = new List<Control>();
-            foreach (Control ch in c.Controls) kids.Add(ch);
-            foreach (Control ch in kids) ScaleTree(ch, f);
-            if (c is Form) return;
-            c.SetBounds((int)Math.Round(c.Left * f), (int)Math.Round(c.Top * f),
-                        (int)Math.Round(c.Width * f), (int)Math.Round(c.Height * f));
-            c.Margin = ScalePadding(c.Margin, f);
-            c.Padding = ScalePadding(c.Padding, f);
-        }
-
         [DllImport("user32.dll")]
         static extern uint GetDpiForWindow(IntPtr h);
+
+        [DllImport("user32.dll")]
+        static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+
+        [DllImport("user32.dll")]
+        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        const int WM_SETREDRAW = 0x000B;
+        const int WM_DPICHANGED = 0x02E0;
+        const int WM_SETTINGCHANGE = 0x001A;
+
+        void ApplyDpiScale(uint targetDpi, bool isDpiChange)
+        {
+            if (targetDpi < 96) targetDpi = 96;
+            currentDpi = targetDpi;
+            scaleFactor = targetDpi / 96f;
+
+            // Responsive DPI scaling aligned with Windows 11 Fluent specifications
+            int barH = (int)Math.Round(40 * scaleFactor);
+            headerBar.Height = barH;
+            header.Padding = new Padding((int)(6 * scaleFactor), (int)(4 * scaleFactor), (int)(4 * scaleFactor), 0);
+            themeWrap.Width = (int)Math.Round(42 * scaleFactor);
+            themeWrap.Padding = new Padding((int)(4 * scaleFactor));
+
+            int btnSz = (int)Math.Round(32 * scaleFactor);
+            Size btnSize = new Size(btnSz, btnSz);
+            Padding btnMargin = new Padding(0, 0, (int)Math.Max(1, 2 * scaleFactor), 0);
+
+            btnOpen.Size = btnSize; btnOpen.Margin = btnMargin;
+            btnSave.Size = btnSize; btnSave.Margin = btnMargin;
+            btnSaveAs.Size = btnSize; btnSaveAs.Margin = btnMargin;
+            btnUndo.Size = btnSize; btnUndo.Margin = btnMargin;
+            btnFit.Size = btnSize; btnFit.Margin = btnMargin;
+
+            foreach (Control sep in separators)
+            {
+                sep.Size = new Size(1, (int)Math.Round(20 * scaleFactor));
+                sep.Margin = new Padding((int)(6 * scaleFactor), (int)(6 * scaleFactor), (int)(6 * scaleFactor), 0);
+            }
+
+            int iconSz = (int)Math.Round(18 * scaleFactor);
+            brushIcon.Size = new Size(iconSz, btnSz);
+            brushIcon.Margin = new Padding((int)(4 * scaleFactor), 0, 0, 0);
+
+            brushSlider.Size = new Size((int)Math.Round(86 * scaleFactor), btnSz);
+            brushSlider.Margin = new Padding((int)(2 * scaleFactor), 0, (int)(2 * scaleFactor), 0);
+
+            Size pillSize = new Size((int)Math.Round(42 * scaleFactor), (int)Math.Round(24 * scaleFactor));
+            Padding pillMargin = new Padding(0, (int)(4 * scaleFactor), (int)(6 * scaleFactor), 0);
+
+            brushVal.Size = pillSize; brushVal.Margin = pillMargin;
+            FontHelper.SetFont(brushVal, new Font(Program.UiFontName, 9f));
+
+            blockIcon.Size = new Size(iconSz, btnSz);
+            blockIcon.Margin = new Padding((int)(4 * scaleFactor), 0, 0, 0);
+
+            blockSlider.Size = new Size((int)Math.Round(72 * scaleFactor), btnSz);
+            blockSlider.Margin = new Padding((int)(2 * scaleFactor), 0, (int)(2 * scaleFactor), 0);
+
+            blockVal.Size = pillSize; blockVal.Margin = pillMargin;
+            FontHelper.SetFont(blockVal, new Font(Program.UiFontName, 9f));
+
+            int segW = (int)Math.Round(146 * scaleFactor);
+            segPanel.Size = new Size(segW, btnSz);
+            segPanel.Margin = new Padding((int)(6 * scaleFactor), 0, 0, 0);
+
+            int segGap = Math.Max(2, (int)Math.Round(2 * scaleFactor));
+            int segBtnW = (segW - segGap * 3) / 2;
+            int segBtnH = btnSz - segGap * 2;
+
+            modeMosaicBtn.SetBounds(segGap, segGap, segBtnW, segBtnH);
+            FontHelper.SetFont(modeMosaicBtn, new Font(Program.UiFontName, 9f));
+
+            modeEraseBtn.SetBounds(segGap * 2 + segBtnW, segGap, segBtnW, segBtnH);
+            FontHelper.SetFont(modeEraseBtn, new Font(Program.UiFontName, 9f));
+
+            // Status bar (Notepad spec: 30px scaled, vertically centered)
+            int statusH = (int)Math.Round(30 * scaleFactor);
+            statusPanel.Height = statusH;
+
+            statusLeft.Height = statusH;
+            statusLeft.Width = (int)Math.Round(500 * scaleFactor);
+            FontHelper.SetFont(statusLeft, new Font(Program.UiFontName, 9f));
+            statusLeft.Padding = new Padding((int)(12 * scaleFactor), 0, 0, 0);
+
+            FontHelper.SetFont(dimLabel, new Font(Program.UiFontName, 9f));
+            FontHelper.SetFont(zoomLabel, new Font(Program.UiFontName, 9f));
+
+            int zoomBtnSz = (int)Math.Round(22 * scaleFactor);
+            btnZoomOut.Size = new Size(zoomBtnSz, zoomBtnSz);
+            btnZoomIn.Size = new Size(zoomBtnSz, zoomBtnSz);
+            zoomLabel.Size = new Size((int)Math.Round(48 * scaleFactor), zoomBtnSz);
+
+            int statusTop = Math.Max(0, (statusH - zoomBtnSz) / 2);
+            dimLabel.Margin = new Padding(0, statusTop + (int)(1 * scaleFactor), (int)(10 * scaleFactor), 0);
+            btnZoomOut.Margin = new Padding(0, statusTop, 0, 0);
+            zoomLabel.Margin = new Padding(0, statusTop, 0, 0);
+            btnZoomIn.Margin = new Padding(0, statusTop, (int)(8 * scaleFactor), 0);
+
+            // Form boundaries & window sizing (preventing toolbar overflow)
+            MinimumSize = new Size((int)Math.Round(680 * scaleFactor), (int)Math.Round(450 * scaleFactor));
+
+            if (!isDpiChange)
+            {
+                Rectangle wa = Screen.FromControl(this).WorkingArea;
+                int defW = (int)Math.Round(1080 * scaleFactor);
+                int defH = (int)Math.Round(720 * scaleFactor);
+                int w = Math.Min(defW, (int)(wa.Width * 0.95f));
+                int h = Math.Min(defH, (int)(wa.Height * 0.92f));
+                this.Size = new Size(w, h);
+                this.Location = new Point(wa.Left + (wa.Width - w) / 2, wa.Top + (wa.Height - h) / 2);
+            }
+
+            LayoutEmptyButton();
+            Invalidate(true);
+        }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            EnsureScaled();
-            if (Theme.Dark)
+            uint dpi = 96;
+            try { dpi = GetDpiForWindow(Handle); } catch { }
+            if (dpi == 0) dpi = 96;
+            ApplyDpiScale(dpi, false);
+            ApplyTitleBarTheme();
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_DPICHANGED)
             {
-                try { int v = 1; DwmSetWindowAttribute(Handle, 20, ref v, 4); } catch { }
+                uint newDpi = (uint)(m.WParam.ToInt32() & 0xFFFF);
+                RECT r = (RECT)Marshal.PtrToStructure(m.LParam, typeof(RECT));
+
+                // Maintain proportional image pan coordinates across monitor DPI changes
+                if (currentDpi > 0 && newDpi != currentDpi)
+                {
+                    float ratio = (float)newDpi / currentDpi;
+                    panX *= ratio;
+                    panY *= ratio;
+                }
+
+                ApplyDpiScale(newDpi, true);
+                SetWindowPos(Handle, IntPtr.Zero, r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top, 0x0004 | 0x0010 | 0x0020);
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            if (m.Msg == WM_SETTINGCHANGE)
+            {
+                if (AppSettings.ThemeMode == 0)
+                {
+                    bool dark = Theme.DetectSystemDark();
+                    if (dark != Theme.Dark)
+                    {
+                        ApplyThemeVisuals(dark);
+                        UpdateThemeButton();
+                    }
+                }
+            }
+            base.WndProc(ref m);
+        }
+
+        void ApplyTitleBarTheme()
+        {
+            try
+            {
+                int v = Theme.Dark ? 1 : 0;
+                DwmSetWindowAttribute(Handle, 20, ref v, 4); // DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 20H1+)
+                DwmSetWindowAttribute(Handle, 19, ref v, 4); // DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 1903/1909)
+                int capColor = (Theme.Bar.R) | (Theme.Bar.G << 8) | (Theme.Bar.B << 16);
+                DwmSetWindowAttribute(Handle, 35, ref capColor, 4); // DWMWA_CAPTION_COLOR (Win11)
+                int textColor = (Theme.Text.R) | (Theme.Text.G << 8) | (Theme.Text.B << 16);
+                DwmSetWindowAttribute(Handle, 36, ref textColor, 4); // DWMWA_TEXT_COLOR (Win11)
+                int borderColor = (Theme.Border.R) | (Theme.Border.G << 8) | (Theme.Border.B << 16);
+                DwmSetWindowAttribute(Handle, 34, ref borderColor, 4); // DWMWA_BORDER_COLOR (Win11)
+                SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, 0x0027);
+            }
+            catch { }
+        }
+
+        void UpdateThemeButton()
+        {
+            if (themeBtn == null) return;
+            if (AppSettings.ThemeMode == 1)
+            {
+                themeBtn.Vector = null; themeBtn.Glyph = "\uE706";
+                tip.SetToolTip(themeBtn, "主题：浅色（点击切换）");
+            }
+            else if (AppSettings.ThemeMode == 2)
+            {
+                themeBtn.Vector = null; themeBtn.Glyph = "\uE708";
+                tip.SetToolTip(themeBtn, "主题：深色（点击切换）");
+            }
+            else
+            {
+                themeBtn.Glyph = null; themeBtn.Vector = IconArt.ThemeAuto;
+                tip.SetToolTip(themeBtn, "主题：跟随系统（点击切换）");
+            }
+            themeBtn.Invalidate();
+        }
+
+        void CycleTheme()
+        {
+            AppSettings.ThemeMode = (AppSettings.ThemeMode + 1) % 3;
+            AppSettings.Save();
+            bool dark = AppSettings.ThemeMode == 2 || (AppSettings.ThemeMode == 0 && Theme.DetectSystemDark());
+            if (dark != Theme.Dark) ApplyThemeVisuals(dark);
+            UpdateThemeButton();
+        }
+
+        void ApplyThemeVisuals(bool dark)
+        {
+            SendMessage(Handle, WM_SETREDRAW, (IntPtr)0, IntPtr.Zero);
+            try
+            {
+                Theme.Apply(dark);
+
+                BackColor = Theme.Bar;
+                ForeColor = Theme.Text;
+
+                if (headerBar != null) headerBar.BackColor = Theme.Bar;
+                if (header != null) header.BackColor = Theme.Bar;
+                if (themeWrap != null) themeWrap.BackColor = Theme.Bar;
+                if (statusPanel != null) statusPanel.BackColor = Theme.Bar;
+                if (statusRight != null) statusRight.BackColor = Theme.Bar;
+
+                if (canvas != null) canvas.BackColor = Theme.Canvas;
+                if (btnOpenBig != null) btnOpenBig.BackColor = Theme.Canvas;
+
+                if (btnOpen != null) { btnOpen.BackColor = Theme.Bar; btnOpen.ForeColor = Theme.Text; }
+                if (btnSave != null) { btnSave.BackColor = Theme.Bar; btnSave.ForeColor = Theme.Text; }
+                if (btnSaveAs != null) { btnSaveAs.BackColor = Theme.Bar; btnSaveAs.ForeColor = Theme.Text; }
+                if (btnUndo != null) { btnUndo.BackColor = Theme.Bar; btnUndo.ForeColor = Theme.Text; }
+                if (btnFit != null) { btnFit.BackColor = Theme.Bar; btnFit.ForeColor = Theme.Text; }
+                if (themeBtn != null) { themeBtn.BackColor = Theme.Bar; themeBtn.ForeColor = Theme.Text; }
+
+                if (brushIcon != null) brushIcon.BackColor = Theme.Bar;
+                if (blockIcon != null) blockIcon.BackColor = Theme.Bar;
+                if (brushSlider != null) brushSlider.BackColor = Theme.Bar;
+                if (blockSlider != null) blockSlider.BackColor = Theme.Bar;
+
+                if (brushVal != null) { brushVal.ForeColor = Theme.Text; brushVal.Invalidate(); }
+                if (blockVal != null) { blockVal.ForeColor = Theme.Text; blockVal.Invalidate(); }
+
+                if (segPanel != null) segPanel.BackColor = Theme.SegBg;
+                if (modeMosaicBtn != null) modeMosaicBtn.BackColor = Theme.SegBg;
+                if (modeEraseBtn != null) modeEraseBtn.BackColor = Theme.SegBg;
+
+                foreach (Control sep in separators)
+                {
+                    if (sep != null) sep.BackColor = Theme.Border;
+                }
+
+                if (headerBar != null) headerBar.Invalidate();
+                if (statusPanel != null) statusPanel.Invalidate();
+                if (statusLeft != null) { statusLeft.BackColor = Theme.Bar; statusLeft.ForeColor = Theme.Secondary; }
+                if (dimLabel != null) { dimLabel.BackColor = Theme.Bar; dimLabel.ForeColor = Theme.Secondary; }
+                if (zoomLabel != null) { zoomLabel.BackColor = Theme.Bar; zoomLabel.ForeColor = Theme.Text; }
+                if (btnZoomOut != null) { btnZoomOut.BackColor = Theme.Bar; btnZoomOut.ForeColor = Theme.Text; }
+                if (btnZoomIn != null) { btnZoomIn.BackColor = Theme.Bar; btnZoomIn.ForeColor = Theme.Text; }
+
+                ApplyTitleBarTheme();
+            }
+            finally
+            {
+                SendMessage(Handle, WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
+                RedrawWindow(Handle, IntPtr.Zero, IntPtr.Zero, 0x0185); // RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE | RDW_UPDATENOW
             }
         }
 
-        Label MakePill(string text)
+        PillLabel MakePill(string text)
         {
-            Label l = new Label();
-            l.Text = text;
-            l.Size = new Size(30, 20);
-            l.Margin = new Padding(0, 4, 10, 0);
-            l.TextAlign = ContentAlignment.MiddleCenter;
-            l.Font = new Font(Program.UiFontName, 9f);
-            l.ForeColor = Theme.Text;
-            l.BackColor = Theme.Pill;
-            l.SizeChanged += delegate
-            {
-                if (l.Width <= 0 || l.Height <= 0) return;
-                using (GraphicsPath p = Theme.RoundedRect(new Rectangle(0, 0, l.Width, l.Height), Math.Max(2, l.Height / 2 - 1)))
-                    l.Region = new Region(p);
-            };
-            return l;
+            PillLabel p = new PillLabel();
+            p.Text = text;
+            p.Size = new Size(42, 24);
+            p.ForeColor = Theme.Text;
+            p.Font = new Font(Program.UiFontName, 9f);
+            return p;
         }
 
-        Panel MakeSeparator()
+        Control MakeSeparator()
         {
             Panel p = new Panel();
             p.Size = new Size(1, 20);
-            p.Margin = new Padding(8, 4, 8, 0);
             p.BackColor = Theme.Border;
+            p.Margin = new Padding(6, 6, 6, 0);
+            separators.Add(p);
             return p;
         }
 
@@ -912,20 +1362,36 @@ namespace CensorBrushApp
             btnFit.Enabled = has;
             btnZoomIn.Enabled = has;
             btnZoomOut.Enabled = has;
-            statusRight.Visible = has;
             btnOpenBig.Visible = !has;
             LayoutEmptyButton();
+        }
+
+        void UpdateTitle()
+        {
+            if (currentBmp == null)
+            {
+                Text = "打码笔";
+            }
+            else
+            {
+                string name = string.IsNullOrEmpty(filePath) ? "未命名图片" : Path.GetFileName(filePath);
+                Text = (isDirty ? "*" : "") + name + " - 打码笔";
+            }
         }
 
         void LayoutEmptyButton()
         {
             if (canvas == null || btnOpenBig == null) return;
             if (canvas.Width <= 0 || canvas.Height <= 0) return;
-            int off = (int)(56 * Math.Max(0.6f, canvas.Height / 690f));
-            btnOpenBig.Location = new Point((canvas.Width - btnOpenBig.Width) / 2, canvas.Height / 2 + off);
+            int bw = (int)Math.Round(112 * scaleFactor);
+            int bh = (int)Math.Round(32 * scaleFactor);
+            btnOpenBig.Size = new Size(bw, bh);
+            FontHelper.SetFont(btnOpenBig, new Font(Program.UiFontName, 9.5f));
+            int off = (int)Math.Round(48 * scaleFactor);
+            btnOpenBig.Location = new Point((canvas.Width - bw) / 2, canvas.Height / 2 + off);
         }
 
-        // ================= file open / save =================
+        // ================= file open / save / clipboard =================
 
         void DragEnterHandler(object sender, DragEventArgs e)
         {
@@ -946,10 +1412,20 @@ namespace CensorBrushApp
 
         void DoOpen()
         {
-            OpenFileDialog dlg = new OpenFileDialog();
-            dlg.Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp|所有文件|*.*";
-            dlg.Title = "打开图片";
-            if (dlg.ShowDialog(this) == DialogResult.OK) OpenImage(dlg.FileName);
+            if (isDirty && currentBmp != null)
+            {
+                DialogResult r = MessageBox.Show(this, "当前图片有未保存的更改，是否在打开前保存？", "打码笔",
+                    MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (r == DialogResult.Yes) { if (!DoQuickSave()) return; }
+                else if (r == DialogResult.Cancel) return;
+            }
+
+            using (OpenFileDialog dlg = new OpenFileDialog())
+            {
+                dlg.Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp|所有文件|*.*";
+                dlg.Title = "打开图片";
+                if (dlg.ShowDialog(this) == DialogResult.OK) OpenImage(dlg.FileName);
+            }
         }
 
         public void OpenImage(string path)
@@ -965,25 +1441,31 @@ namespace CensorBrushApp
                         g.DrawImage(src, 0, 0, src.Width, src.Height);
                     }
                 }
-                if (currentBmp != null) currentBmp.Dispose();
-                currentBmp = bmp;
-                imgW = bmp.Width; imgH = bmp.Height;
-
-                origPixels = ExtractPixels(bmp);
-                curPixels = (byte[])origPixels.Clone();
-                undoStack.Clear();
-                filePath = path;
-                Text = Path.GetFileName(path) + " - 打码笔";
-                FitView();
-                RefreshCommandStates();
-                UpdateStatus();
-                canvas.Invalidate();
-                canvas.Focus();
+                SetBitmap(bmp, path);
             }
             catch (Exception ex)
             {
                 MessageBox.Show(this, "打开失败：" + ex.Message, "打码笔", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        void SetBitmap(Bitmap bmp, string path)
+        {
+            if (currentBmp != null) currentBmp.Dispose();
+            currentBmp = bmp;
+            imgW = bmp.Width; imgH = bmp.Height;
+
+            origPixels = ExtractPixels(bmp);
+            curPixels = (byte[])origPixels.Clone();
+            undoStack.Clear();
+            filePath = path;
+            isDirty = false;
+            UpdateTitle();
+            FitView();
+            RefreshCommandStates();
+            UpdateStatus();
+            canvas.Invalidate();
+            canvas.Focus();
         }
 
         static byte[] ExtractPixels(Bitmap bmp)
@@ -1021,25 +1503,42 @@ namespace CensorBrushApp
 
         string QuickSavePath()
         {
+            if (string.IsNullOrEmpty(filePath)) return "";
             string dir = Path.GetDirectoryName(filePath);
             string name = Path.GetFileNameWithoutExtension(filePath);
-            return Path.Combine(dir, name + "_censor.png");
+            string ext = Path.GetExtension(filePath);
+            if (name.EndsWith("_censor", StringComparison.OrdinalIgnoreCase))
+                return Path.Combine(dir, name + ext);
+            return Path.Combine(dir, name + "_censor" + ext);
         }
 
-        void DoQuickSave()
+        bool DoQuickSave()
         {
-            if (currentBmp == null) return;
-            SaveTo(QuickSavePath());
+            if (currentBmp == null) return false;
+            if (string.IsNullOrEmpty(filePath)) return DoSaveAs();
+            string target = QuickSavePath();
+            SaveTo(target);
+            return true;
         }
 
-        void DoSaveAs()
+        bool DoSaveAs()
         {
-            if (currentBmp == null) return;
-            SaveFileDialog dlg = new SaveFileDialog();
-            dlg.Filter = "PNG 图片|*.png|JPEG 图片|*.jpg";
-            dlg.FileName = Path.GetFileName(QuickSavePath());
-            dlg.InitialDirectory = Path.GetDirectoryName(filePath);
-            if (dlg.ShowDialog(this) == DialogResult.OK) SaveTo(dlg.FileName);
+            if (currentBmp == null) return false;
+            using (SaveFileDialog dlg = new SaveFileDialog())
+            {
+                dlg.Filter = "PNG 图片|*.png|JPEG 图片|*.jpg;*.jpeg|BMP 图片|*.bmp";
+                string defName = string.IsNullOrEmpty(filePath) ? "未命名_打码.png" : Path.GetFileNameWithoutExtension(filePath) + "_censor" + Path.GetExtension(filePath);
+                dlg.FileName = defName;
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    SaveTo(dlg.FileName);
+                    filePath = dlg.FileName;
+                    UpdateTitle();
+                    UpdateStatus();
+                    return true;
+                }
+            }
+            return false;
         }
 
         void SaveTo(string path)
@@ -1049,18 +1548,23 @@ namespace CensorBrushApp
                 string ext = Path.GetExtension(path).ToLowerInvariant();
                 if (ext == ".jpg" || ext == ".jpeg")
                 {
-                    Bitmap tmp = new Bitmap(imgW, imgH, PixelFormat.Format24bppRgb);
-                    using (Graphics g = Graphics.FromImage(tmp)) { g.DrawImage(currentBmp, 0, 0, imgW, imgH); }
-                    ImageCodecInfo codec = GetJpegCodec();
-                    EncoderParameters ep = new EncoderParameters(1);
-                    ep.Param[0] = new EncoderParameter(Encoder.Quality, 95L);
-                    tmp.Save(path, codec, ep);
-                    tmp.Dispose();
+                    using (Bitmap tmp = new Bitmap(imgW, imgH, PixelFormat.Format24bppRgb))
+                    {
+                        using (Graphics g = Graphics.FromImage(tmp)) { g.DrawImage(currentBmp, 0, 0, imgW, imgH); }
+                        ImageCodecInfo codec = GetJpegCodec();
+                        using (EncoderParameters ep = new EncoderParameters(1))
+                        {
+                            ep.Param[0] = new EncoderParameter(Encoder.Quality, 95L);
+                            tmp.Save(path, codec, ep);
+                        }
+                    }
                 }
                 else
                 {
                     currentBmp.Save(path, ImageFormat.Png);
                 }
+                isDirty = false;
+                UpdateTitle();
                 saveTimer.Stop();
                 statusLeft.Text = "✓ 已保存 · " + Path.GetFileName(path);
                 saveTimer.Start();
@@ -1068,6 +1572,58 @@ namespace CensorBrushApp
             catch (Exception ex)
             {
                 MessageBox.Show(this, "保存失败：" + ex.Message, "打码笔", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        void DoCopy()
+        {
+            if (currentBmp == null) return;
+            try
+            {
+                Clipboard.SetImage(currentBmp);
+                saveTimer.Stop();
+                statusLeft.Text = "✓ 已复制图片到剪贴板";
+                saveTimer.Start();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "复制到剪贴板失败：" + ex.Message, "打码笔", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        void DoPaste()
+        {
+            try
+            {
+                if (Clipboard.ContainsImage())
+                {
+                    if (isDirty && currentBmp != null)
+                    {
+                        DialogResult res = MessageBox.Show(this, "当前图片有未保存的更改，是否覆盖？", "打码笔",
+                            MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                        if (res != DialogResult.Yes) return;
+                    }
+                    Image img = Clipboard.GetImage();
+                    if (img != null)
+                    {
+                        Bitmap bmp = new Bitmap(img.Width, img.Height, PixelFormat.Format32bppArgb);
+                        using (Graphics g = Graphics.FromImage(bmp))
+                        {
+                            g.DrawImage(img, 0, 0, img.Width, img.Height);
+                        }
+                        img.Dispose();
+                        SetBitmap(bmp, "");
+                        isDirty = true;
+                        UpdateTitle();
+                        saveTimer.Stop();
+                        statusLeft.Text = "✓ 已从剪贴板粘贴图片";
+                        saveTimer.Start();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "粘贴图片失败：" + ex.Message, "打码笔", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -1102,7 +1658,10 @@ namespace CensorBrushApp
             curPixels = undoStack[last];
             undoStack.RemoveAt(last);
             WriteBack(new Rectangle(0, 0, imgW, imgH));
+            if (undoStack.Count == 0) isDirty = false;
+            UpdateTitle();
             RefreshCommandStates();
+            UpdateStatus();
             canvas.Invalidate();
         }
 
@@ -1137,14 +1696,17 @@ namespace CensorBrushApp
         {
             if (currentBmp == null)
             {
-                statusLeft.Text = "";
+                statusLeft.Text = "就绪";
                 dimLabel.Text = "";
                 zoomLabel.Text = "";
+                statusRight.Visible = false;
                 return;
             }
-            statusLeft.Text = Path.GetFileName(filePath);
-            dimLabel.Text = imgW + " × " + imgH;
-            zoomLabel.Text = (int)(zoom * 100) + "%";
+            statusRight.Visible = true;
+            string name = string.IsNullOrEmpty(filePath) ? "未命名图片" : Path.GetFileName(filePath);
+            statusLeft.Text = name + (isDirty ? " *" : "");
+            dimLabel.Text = imgW + " × " + imgH + " 像素";
+            zoomLabel.Text = (int)Math.Round(zoom * 100) + "%";
         }
 
         void InvalidateBrushAt(Point p)
@@ -1166,52 +1728,71 @@ namespace CensorBrushApp
         void Canvas_Paint(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
+            g.Clear(Theme.Canvas); // Clear background to provide pristine backdrop for ClearType and eliminate redraw artifacts
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
             if (currentBmp == null)
             {
                 int cx = canvas.Width / 2, cy = canvas.Height / 2;
-                float fs = Math.Max(0.6f, canvas.Height / 690f);
-                using (Font glyphF = new Font(Program.IconFontName, 54f))
-                using (Font titleF = new Font(Program.UiFontName, 12f))
-                using (Font subF = new Font(Program.UiFontName, 9f))
+                using (Font glyphF = new Font(Program.IconFontName, 54f * scaleFactor, FontStyle.Regular, GraphicsUnit.Pixel))
+                using (Font titleF = new Font(Program.UiFontName, 13f, FontStyle.Regular, GraphicsUnit.Point))
+                using (Font subF = new Font(Program.UiFontName, 9.5f, FontStyle.Regular, GraphicsUnit.Point))
                 {
-                    TextRenderer.DrawText(g, "\uE91B", glyphF,
-                        new Rectangle(cx - (int)(60 * fs), cy - (int)(118 * fs), (int)(120 * fs), (int)(90 * fs)),
-                        Color.FromArgb(120, Theme.Secondary.R, Theme.Secondary.G, Theme.Secondary.B),
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    int iconW = (int)Math.Round(120 * scaleFactor);
+                    int iconH = (int)Math.Round(80 * scaleFactor);
+                    Color iconFg = Theme.Blend(Theme.Secondary, Theme.Canvas, 0.45f);
+
+                    if (Program.FamilyExists("Segoe Fluent Icons") || Program.FamilyExists("Segoe MDL2 Assets"))
+                    {
+                        TextRenderer.DrawText(g, "\uE91B", glyphF,
+                            new Rectangle(cx - iconW / 2, cy - (int)Math.Round(100 * scaleFactor), iconW, iconH),
+                            iconFg,
+                            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                    }
+                    else
+                    {
+                        Rectangle photoRect = new Rectangle(cx - (int)(32 * scaleFactor), cy - (int)(90 * scaleFactor), (int)(64 * scaleFactor), (int)(48 * scaleFactor));
+                        IconArt.PhotoEmpty(g, photoRect, iconFg);
+                    }
+
                     TextRenderer.DrawText(g, "拖放图片到这里", titleF,
-                        new Rectangle(cx - (int)(160 * fs), cy - (int)(22 * fs), (int)(320 * fs), (int)(28 * fs)), Theme.Text,
+                        new Rectangle(cx - (int)Math.Round(200 * scaleFactor), cy - (int)Math.Round(16 * scaleFactor), (int)Math.Round(400 * scaleFactor), (int)Math.Round(28 * scaleFactor)),
+                        Theme.Text,
                         TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                     TextRenderer.DrawText(g, "或双击任意处打开 · PNG / JPG / BMP", subF,
-                        new Rectangle(cx - (int)(160 * fs), cy + (int)(6 * fs), (int)(320 * fs), (int)(22 * fs)), Theme.Secondary,
+                        new Rectangle(cx - (int)Math.Round(200 * scaleFactor), cy + (int)Math.Round(14 * scaleFactor), (int)Math.Round(400 * scaleFactor), (int)Math.Round(22 * scaleFactor)),
+                        Theme.Secondary,
                         TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                 }
                 if (dragOver) DrawDragFrame(g);
                 return;
             }
+
+            // Pixel-align integer destination coordinates for razor-sharp rendering
+            int ix = (int)Math.Round(panX);
+            int iy = (int)Math.Round(panY);
+            int idw = (int)Math.Round(imgW * zoom);
+            int idh = (int)Math.Round(imgH * zoom);
+
             // soft shadow
-            float dw = imgW * zoom, dh = imgH * zoom;
             using (Brush sh1 = new SolidBrush(Color.FromArgb(22, 0, 0, 0)))
-                g.FillRectangle(sh1, panX + 1, panY + 4, dw, dh);
+                g.FillRectangle(sh1, ix + 1, iy + 4, idw, idh);
             using (Brush sh2 = new SolidBrush(Color.FromArgb(16, 0, 0, 0)))
-                g.FillRectangle(sh2, panX, panY + 2, dw, dh);
+                g.FillRectangle(sh2, ix, iy + 2, idw, idh);
 
             g.InterpolationMode = zoom >= 1f ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic;
             g.PixelOffsetMode = PixelOffsetMode.Half;
-            g.TranslateTransform(panX, panY);
-            g.ScaleTransform(zoom, zoom);
-            g.DrawImage(currentBmp, 0, 0, imgW, imgH);
-            g.ResetTransform();
+            g.DrawImage(currentBmp, ix, iy, idw, idh);
+            g.PixelOffsetMode = PixelOffsetMode.Default;
 
-            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.SmoothingMode = SmoothingMode.None;
             using (Pen border = new Pen(Theme.ImageBorder, 1))
             {
-                g.DrawRectangle(border, panX, panY, dw, dh);
+                g.DrawRectangle(border, ix, iy, idw, idh);
             }
-            if (hasMouse && !panning && !stroking)
-            {
-                DrawBrushRing(g, lastMouse);
-            }
-            else if (hasMouse && stroking)
+
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            if (hasMouse && !panning)
             {
                 DrawBrushRing(g, lastMouse);
             }
@@ -1268,6 +1849,9 @@ namespace CensorBrushApp
                 hasLastImg = false;
                 lastMouse = e.Location; hasMouse = true;
                 ApplyStrokeTo(e.Location);
+                isDirty = true;
+                UpdateTitle();
+                UpdateStatus();
             }
         }
 
@@ -1288,32 +1872,35 @@ namespace CensorBrushApp
                 return;
             }
             // idle: repaint only the brush ring's old + new spots (keeps motion fluid)
+            Point old = lastMouse;
+            lastMouse = e.Location;
+            hasMouse = true;
             if (currentBmp != null)
             {
-                if (hasMouse) InvalidateBrushAt(lastMouse);
-                lastMouse = e.Location; hasMouse = true;
+                InvalidateBrushAt(old);
                 InvalidateBrushAt(lastMouse);
-            }
-            else
-            {
-                lastMouse = e.Location; hasMouse = true;
             }
         }
 
         void Canvas_MouseUp(object sender, MouseEventArgs e)
         {
-            stroking = false;
-            if (panning)
+            if (panning && (e.Button == MouseButtons.Middle || e.Button == MouseButtons.Left))
             {
                 panning = false;
-                canvas.Cursor = Cursors.Cross;
+                canvas.Cursor = spaceDown ? Cursors.SizeAll : Cursors.Cross;
+            }
+            if (stroking && (e.Button == MouseButtons.Left || e.Button == MouseButtons.Right))
+            {
+                stroking = false;
+                hasLastImg = false;
+                canvas.Invalidate();
             }
         }
 
-        void ApplyStrokeTo(Point m)
+        void ApplyStrokeTo(Point pt)
         {
             float ix, iy;
-            if (!TryImgPoint(m, out ix, out iy)) return;
+            if (!TryImgPoint(pt, out ix, out iy)) return;
             Rectangle dirty = Rectangle.Empty;
             if (!hasLastImg)
             {
@@ -1432,20 +2019,35 @@ namespace CensorBrushApp
         void Canvas_MouseWheel(object sender, MouseEventArgs e)
         {
             if (currentBmp == null) return;
-            if ((Control.ModifierKeys & Keys.Control) != Keys.Control) return;
-            float ix, iy;
-            if (!TryImgPoint(e.Location, out ix, out iy)) return;
-            float factor = e.Delta > 0 ? 1.15f : (1f / 1.15f);
-            float nz = Math.Max(0.05f, Math.Min(40f, zoom * factor));
-            if (nz == zoom) return;
-            zoom = nz;
-            panX = e.Location.X - ix * zoom;
-            panY = e.Location.Y - iy * zoom;
-            UpdateStatus();
-            canvas.Invalidate();
+            if ((Control.ModifierKeys & Keys.Control) == Keys.Control)
+            {
+                // Zoom centered at cursor
+                float ix, iy;
+                if (!TryImgPoint(e.Location, out ix, out iy)) return;
+                float factor = e.Delta > 0 ? 1.15f : (1f / 1.15f);
+                float nz = Math.Max(0.05f, Math.Min(40f, zoom * factor));
+                if (nz == zoom) return;
+                zoom = nz;
+                panX = e.Location.X - ix * zoom;
+                panY = e.Location.Y - iy * zoom;
+                UpdateStatus();
+                canvas.Invalidate();
+            }
+            else if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
+            {
+                // Shift + Wheel = horizontal pan
+                panX += (e.Delta > 0 ? 40f : -40f) * scaleFactor;
+                canvas.Invalidate();
+            }
+            else
+            {
+                // Normal Wheel = vertical pan
+                panY += (e.Delta > 0 ? 40f : -40f) * scaleFactor;
+                canvas.Invalidate();
+            }
         }
 
-        // ================= keys =================
+        // ================= keys & close =================
 
         void Form_KeyDown(object sender, KeyEventArgs e)
         {
@@ -1458,8 +2060,11 @@ namespace CensorBrushApp
                 return;
             }
             if (e.Control && e.KeyCode == Keys.Z) { DoUndo(); e.Handled = true; return; }
+            if (e.Control && e.Shift && e.KeyCode == Keys.S) { DoSaveAs(); e.Handled = true; return; }
             if (e.Control && e.KeyCode == Keys.S) { DoQuickSave(); e.Handled = true; return; }
             if (e.Control && e.KeyCode == Keys.O) { DoOpen(); e.Handled = true; return; }
+            if (e.Control && e.KeyCode == Keys.C) { DoCopy(); e.Handled = true; return; }
+            if (e.Control && e.KeyCode == Keys.V) { DoPaste(); e.Handled = true; return; }
             if (e.Control && (e.KeyCode == Keys.Oemplus || e.KeyCode == Keys.Add)) { ZoomStep(1.25f); e.Handled = true; return; }
             if (e.Control && (e.KeyCode == Keys.OemMinus || e.KeyCode == Keys.Subtract)) { ZoomStep(1f / 1.25f); e.Handled = true; return; }
             if (e.Control && e.KeyCode == Keys.D0) { FitView(); canvas.Invalidate(); e.Handled = true; return; }
@@ -1472,6 +2077,33 @@ namespace CensorBrushApp
                 spaceDown = false;
                 if (!panning) canvas.Cursor = Cursors.Cross;
             }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (isDirty && currentBmp != null)
+            {
+                string name = string.IsNullOrEmpty(filePath) ? "当前图片" : Path.GetFileName(filePath);
+                DialogResult res = MessageBox.Show(this, "是否将更改保存到 " + name + "？", "打码笔",
+                    MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (res == DialogResult.Yes)
+                {
+                    if (string.IsNullOrEmpty(filePath))
+                    {
+                        if (!DoSaveAs()) { e.Cancel = true; return; }
+                    }
+                    else
+                    {
+                        DoQuickSave();
+                    }
+                }
+                else if (res == DialogResult.Cancel)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
+            base.OnFormClosing(e);
         }
     }
 }
